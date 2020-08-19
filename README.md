@@ -58,36 +58,78 @@ This packet is what I will be using in the following examples.
 Any packet must extend the ``JedisJSONPacket`` class. This also makes sure that for all packets, you can retrieve the ID and source.
 
 ## Message sending possibilities
-### Direct sending
-To send a direct question from client A to client B, you need to do the following:
+### Single packet sending
+To send a single packet from client A to client B, you need to do the following:
 ```java
 @SneakyThrows
 public static void main(String[] args) {
     // Create a new JedisJSON instance
     JedisJSON jedisJson = new JedisJSON("localhost", 6379, "ClientA");
+    
     // Send the question to client B
     jedisJson.send("ClientB", new MathQuestionPacket("2+2", 0));
+    
     // Shut down the instance after the question is sent
     jedisJson.shutdown();
 }
 ```
 
-On client B, to receive such incoming questions, you need to do:
+On client B, to receive such incoming packets, you need to do:
 ```java
 @SneakyThrows
 public static void main(String[] args) {
     // Create a new JedisJSON instance
     JedisJSON jedisJson = new JedisJSON("localhost", 6379, "ClientB");
+    
     // Receive incoming MathQuestionPackets
     jedisJson.onReceive(MathQuestionPacket.class, packet -> {
         System.out.println("Received a question from " + packet.getSource() + ": " + packet.getQuestion());
     });
-    // After 10 seconds, close the instance
-    Thread.sleep(10000);
+    
+    // After 30 seconds, close the instance
+    Thread.sleep(30000);
     jedisJson.shutdown();
 }
 ```
 
+### Single packet sending, with a reply
+To send a single packet from client A to client B, but expect a response from client B, you need to do the following:
+```java
+@SneakyThrows
+public static void main(String[] args) {
+    // Create a new JedisJSON instance
+    JedisJSON jedisJson = new JedisJSON("localhost", 6379, "ClientA");
+    
+    // Send the packet to ClientB, but with an incoming reply, and a timeout of 10 seconds
+    jedisJson.sendWithReply("ClientB", new MathQuestionPacket("2+2", 0), responsePacket -> {
+        System.out.println("Response: " + responsePacket.getResponse());
+    }, 10000);
+    
+    // After 30 seconds, close the instance
+    Thread.sleep(30000);
+    jedisJson.shutdown();
+}
+```
+The timeout is the time that the library will wait to receive a response to this packet. If you want the library to wait forever, set the timeout value to ``Integer.MAX_VALUE``.
+If you don't enter a timeout, the library will use the default timeout of 5 seconds.
 
+To receive such response packet on client B, the code is simlar to the no-reply example, but with a little change: You must return a packet in the lambda:
+```java
+@SneakyThrows
+public static void main(String[] args) {
+	// Create a new JedisJSON instance
+	JedisJSON jedisJson = new JedisJSON("localhost", 6379, "ClientB");
+  
+	// Listen for an incoming math question, and return the result (in this case, the hard-coded result '4')
+	jedisJson.onReceive(MathQuestionPacket.class, packet -> {
+		System.out.println("Received a question from " + packet.getSource() + ": " + packet.getQuestion());
+		return new MathQuestionPacket("", 4);
+	});
+  
+	// After 30 seconds, close the instance
+	Thread.sleep(30000);
+	jedisJson.shutdown();
+}
+```
 
 
