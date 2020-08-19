@@ -142,7 +142,7 @@ The finite state automata that belongs to this explanation is as follows:
 ![alt text](https://i.ibb.co/KNXwSTb/Jedis-JSONExample.png)
 Client A has the upper automata, client B has the bottom one.
 As you can see, client A has 3 states, and client B has 2. Let's put this to JedisJSON code:
-** CLIENT A **:
+#### Client A
 ```java
 @SneakyThrows
 public static void main(String[] args) {
@@ -174,7 +174,7 @@ public static void main(String[] args) {
 	});
 }
 ```
-** CLIENT B **:
+#### Client B
 ```java
 @SneakyThrows
 public static void main(String[] args) {
