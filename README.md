@@ -1,5 +1,5 @@
 # JedisJSON
-JedisJSON is an easy to use wrapper library, that combines Jedis and Gson to create a user-friendly format for sending packets to other clients, over Redis.
+JedisJSON is an easy to use wrapper library for Java 8 and higher, that combines Jedis and Gson to create a user-friendly format for sending packets to other clients, over Redis.
 The principle is based on the PubSub of Redis.
 
 You can use the JedisJSON library to send packets to one or more other clients. There are possibilities for:
@@ -132,4 +132,97 @@ public static void main(String[] args) {
 }
 ```
 
+### Conversation with another client
+If you want to start a session of multiple packets and response packets with another client, you can use a conversation.
+A conversation essentially behaves like a finite state automata, in that it has states, and it can send questions and receive responses in each state.
 
+Let's create a quick example, where we want client A to send two math questions to client B: ``1+1 and 2+2``. Client B must then respond with the correct answer. If the answer is incorrect, client A must send the question again.
+
+The finite state automata that belongs to this explanation is as follows:
+![alt text](https://i.ibb.co/KNXwSTb/Jedis-JSONExample.png)
+Client A has the upper automata, client B has the bottom one.
+As you can see, client A has 3 states, and client B has 2. Let's put this to JedisJSON code:
+** CLIENT A **:
+```java
+@SneakyThrows
+public static void main(String[] args) {
+	// Create a new JedisJSON instance
+	JedisJSON jedisJson = new JedisJSON("localhost", 6379, "ClientA");
+
+	Conversation<MathQuestionPacket> conversation = jedisJson.createConversation(MathQuestionPacket.class, "ClientB", 0);
+	// Create the initial send, (1+1)
+	conversation.setState(0, new MathQuestionPacket("1+1", 0));
+	// Listen for the response to the first question
+	conversation.onState(0, response -> {
+		// If the answer is correct, go to state 1 and ask '2+2', otherwise, stay in state 0 and ask '1+1'
+		if (response.getResponse() == 2) {
+			conversation.setState(1, new MathQuestionPacket("2+2", 0));
+		} else {
+			conversation.setState(0, new MathQuestionPacket("1+1", 0));
+		}
+	});
+	// Listen for the response to the second question
+	conversation.onState(1, response -> {
+		// If the answer is correct, close the conversation, otherwise, stay in state 1 and ask '2+2'
+		if (response.getResponse() == 4) {
+			System.out.println("Terminated succesfully!");
+			conversation.close();
+			jedisJson.shutdown();
+		} else {
+			conversation.setState(1, new MathQuestionPacket("2+2", 0));
+		}
+	});
+}
+```
+** CLIENT B **:
+```java
+@SneakyThrows
+public static void main(String[] args) {
+	// Create a new JedisJSON instance
+	JedisJSON jedisJson = new JedisJSON("localhost", 6379, "ClientB");
+
+	// Accept incoming conversations
+	jedisJson.acceptConversation(MathQuestionPacket.class, 0, conversation -> {
+		conversation.onState(0, question -> {
+			// Evaluate and answer the question
+			String[] parts = question.getQuestion().split("\\+");
+			int result = Integer.parseInt(parts[0]) + Integer.parseInt(parts[1]);
+			conversation.setState(0, new MathQuestionPacket("", result));
+		});
+	});
+
+	// After 30 seconds, close the instance
+	Thread.sleep(30000);
+	jedisJson.shutdown();
+}
+```
+Test it for yourself! This will print 'Terminated succesfully!' on client A!
+The Conversation code for the clients is also on GitHub.
+
+### Channels
+Lastly, I added support for registering to a channel. These are really easy to understand, as they are close to what PubSub actually is.
+A code example for one client would be:
+```java
+@SneakyThrows
+public static void main(String[] args) {
+	// Create a new JedisJSON instance
+	JedisJSON jedisJson = new JedisJSON("localhost", 6379, "ClientA");
+
+	// Enter the channel
+	Channel<MathQuestionPacket> channel = jedisJson.enterChannel("math", MathQuestionPacket.class);
+	// Broadcasts a question on the channel
+	channel.broadcast(new MathQuestionPacket("2+2", 0));
+	// Receives incoming packets from other clients broadcasts
+	channel.onReceive(result -> {
+		System.out.println("Received a result: " + result.getResponse());
+	});
+
+	// After 30 seconds, close the instance
+	Thread.sleep(30000);
+	jedisJson.shutdown();
+}
+```
+
+# Conclusion
+I initially made this library for myself, but I dedicated quite some time to make it more than just a 'personal project'.
+Feel free to use this library for free in all your projects! That's what I added the documentation for ;)
